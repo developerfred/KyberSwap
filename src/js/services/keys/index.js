@@ -5,3 +5,4 @@ export { default as Trezor } from './trezor.js'
 export { default as Ledger } from './ledger.js'
 
 export { default as Metamask } from './metamask.js'
+export { default as WalletConnector } from './walletConnector.js'

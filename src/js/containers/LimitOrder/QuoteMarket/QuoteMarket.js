@@ -3,16 +3,16 @@ import * as common from "../../../utils/common"
 import * as converter from "../../../utils/converter"
 import { connect } from "react-redux"
 import * as limitOrderActions from "../../../actions/limitOrderActions"
-import { ProcessingModal, SortableComponent } from "../../../components/CommonElement"
+import { SortableComponent } from "../../../components/CommonElement"
 import limitOrderServices from "../../../services/limit_order";
 import { QuoteList, Search } from "../QuoteMarket"
+import { sortQuotePriority } from "../../../utils/sorters";
 
 @connect((store, props) => {
   const tokens = store.tokens.tokens
-  const favorite_pairs_anonymous = store.limitOrder.favorite_pairs_anonymous
   const currentQuote = store.limitOrder.currentQuote
   return {
-    tokens, favorite_pairs_anonymous, currentQuote
+    tokens, currentQuote, global: store.global
   }
 })
 export default class QuoteMarket extends React.Component{
@@ -33,13 +33,13 @@ export default class QuoteMarket extends React.Component{
     this.intervalId = setInterval(() => { 
       this.updateVolume()
     }, 2000);
-    if (common.isUserLogin()) {
-      limitOrderServices.getFavoritePairs().then(
-        (res) => { 
-          this.setState({favorite_pairs: res.map(obj => `${obj.base.toUpperCase()}_${obj.quote.toUpperCase()}`)}) 
-        } 
-      )
-    } 
+    // if (common.isUserLogin()) {
+    //   limitOrderServices.getFavoritePairs().then(
+    //     (res) => {
+    //       this.setState({favorite_pairs: res.map(obj => `${obj.base.toUpperCase()}_${obj.quote.toUpperCase()}`)})
+    //     }
+    //   )
+    // }
   }
 
   componentWillUnmount() {
@@ -55,6 +55,7 @@ export default class QuoteMarket extends React.Component{
 
   onQuoteClick = (quote) => {
     this.props.dispatch(limitOrderActions.updateCurrentQuote(quote))
+    this.props.global.analytics.callTrack("trackLimitOrderClickChooseMarket", quote)
   }
 
   onSearch = (text) => {
@@ -72,9 +73,11 @@ export default class QuoteMarket extends React.Component{
       }
       this.setState({favorite_pairs: favorite_pairs})
       limitOrderServices.updateFavoritePairs(base, quote, to_fav)
+      this.props.global.analytics.callTrack("trackLimitOrderClickFavoritePair", "Logged in", base + "/" + quote, to_fav)
     }else {
       this.props.dispatch(limitOrderActions.updateFavoriteAnonymous(base, quote, to_fav))
-    } 
+      this.props.global.analytics.callTrack("trackLimitOrderClickFavoritePair", "Anonymous", base + "/" + quote, to_fav)
+    }
   }
 
   onSort = (i, isDsc) => {
@@ -84,7 +87,6 @@ export default class QuoteMarket extends React.Component{
   search(quotes){
     const { current_search, current_sort_index, current_sort_dsc, pairs } = this.state
     const { currentQuote } = this.props
-
     return (
       currentQuote === "FAV" ?
         Object.keys(quotes).reduce((res, key) => res.concat(quotes[key]),[]).filter((pair) => pair["is_favorite"]) : 
@@ -101,22 +103,13 @@ export default class QuoteMarket extends React.Component{
 
 
   renderQuotes(){
-    const { tokens, favorite_pairs_anonymous } = this.props
-    const { favorite_pairs } = this.state
-    const fav = common.isUserLogin() ? favorite_pairs : favorite_pairs_anonymous
+    const { tokens } = this.props
+    const fav = this.props.favorite_pairs
 
-    const quotes = Object.keys(tokens).filter((key)=> (tokens[key]["is_quote"] && key != "WETH"))
+    const quotes = Object.keys(tokens).filter((key)=> (tokens[key]["is_quote"] && key !== "ETH"))
     .sort((first, second) => {
-      const firstQuotePriority = tokens[first].quote_priority;
-      const secondQuotePriority = tokens[second].quote_priority;
-
-      if (firstQuotePriority && secondQuotePriority) {
-        if (firstQuotePriority > secondQuotePriority) return -1;
-        else if (firstQuotePriority < secondQuotePriority) return 1;
-      }
-
-      return 0;
-    })
+      return sortQuotePriority(tokens, first, second);
+    });
 
     const result = quotes.reduce((res, quote) => {
         res[quote] = Object.keys(tokens).filter((key)=> (tokens[key]["sp_limit_order"])).filter(key => {
@@ -130,7 +123,7 @@ export default class QuoteMarket extends React.Component{
           }
           return true;
         })
-          .reduce((vt, key) =>{ 
+          .reduce((vt, key) =>{
             return key == quote ? vt : vt.concat({   
                 id: key+"_"+quote, 
                 base: key, quote: quote, 
@@ -164,7 +157,9 @@ export default class QuoteMarket extends React.Component{
   }
 
   onPairClick = (base, quote) => {
-    this.props.selectSourceAndDestToken(quote == "ETH" ? "WETH" : quote, base);
+    quote = quote == "ETH" ? "WETH" : quote
+    this.props.selectSourceAndDestToken(quote, base);
+    this.props.global.analytics.callTrack("trackLimitOrderClickSelectPair", base + "/" + quote)
   }
   render(){
     const quotes = this.renderQuotes()
@@ -175,8 +170,8 @@ export default class QuoteMarket extends React.Component{
           { Object.keys(tokens).length > 0 ? 
             <div id="container">
               <div id="panel" className="theme__text-4 theme__border">
-                <QuoteList onClick={this.onQuoteClick} currentQuote={currentQuote} quotes={["FAV"].concat(Object.keys(quotes))}/>
                 <Search onSearch={this.onSearch}/>
+                <QuoteList onClick={this.onQuoteClick} currentQuote={currentQuote} quotes={["FAV"].concat(Object.keys(quotes))}/>
               </div>
               <div className="table">
                 <div className="table__header">
@@ -188,10 +183,10 @@ export default class QuoteMarket extends React.Component{
                 <div className="table__body">
                   {list.map(pair => <div key={pair["id"]} className="table__row">
                     <div className="overlay" onClick={() => this.onPairClick(pair["base"], pair["quote"])}></div>
-                    <div className={"c0"} onClick={() => this.onFavoriteClick(pair["base"], pair["quote"], !pair["is_favorite"])}>
+                    <div className={"c0"} onClick={() => this.props.onFavoriteClick(pair["base"], pair["quote"], !pair["is_favorite"])}>
                       <div className={pair["is_favorite"] ? "star active" : "star" } />
                     </div>
-                    <div className={"c1"} >{pair["base"] + "/" + pair["quote"]}</div>
+                    <div className={"c1"} >{`${pair["base"]}/${pair["quote"] == "WETH" ? "ETH*" : pair["quote"]}`}</div>
                     <div className={"c2"} >{pair["price"]}</div>
                     <div className={"c3"} >{pair["volume"]}</div>
                     <div className={`${pair["change"] > 0 ? "up" : "down"} c4`}>{Math.abs(pair["change"])}%</div>

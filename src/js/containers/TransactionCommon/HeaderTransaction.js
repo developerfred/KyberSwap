@@ -50,18 +50,15 @@ export default class HeaderTransaction extends React.Component {
   render() {
     var transfer = this.props.translate("transaction.transfer") || "Transfer"
     var swap = this.props.translate("transaction.swap") || "Swap"
-    var order = this.props.translate("transaction.limit_order") || "Limit Order"
 
     const disabledSwapClass = this.props.page === "exchange" ? " exchange-tab__item--active" : " exchange-tab__item--disabled";
     const disabledTransferClass = this.props.page === "transfer" ? " exchange-tab__item--active" : " exchange-tab__item--disabled";
-    const disabledLimitOrderClass = this.props.page === "limit_order" ? " exchange-tab__item--active" : " exchange-tab__item--disabled";
 
     return (
       <div className="exchange-header">
         <div className="exchange-tab">
           <Link to={this.props.exchangeLink} className={"exchange-tab__item" + disabledSwapClass}>{swap}</Link>          
           <Link to={this.props.transferLink} className={"exchange-tab__item" + disabledTransferClass}>{transfer}</Link>
-          <Link to={this.props.orderLink} className={"exchange-tab__item " + disabledLimitOrderClass}>{order}</Link>
           <Link to={this.props.portfolioLink} className={"exchange-tab__item"}>Portfolio</Link>
           <div onClick={this.switchTheme} className={"exchange-tab__item"}>Switch Theme</div>
         </div>
